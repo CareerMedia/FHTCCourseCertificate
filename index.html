@@ -1,0 +1,244 @@
+<!-- ================= Custom Certificate Generator for Canvas ================= -->
+<head>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Any other head elements -->
+</head>
+<style>
+  /* Container split into two columns on desktop, stacked on mobile */
+  .cert‐container {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 20px auto;
+    max-width: 900px;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  /* Left column: the input form */
+  .cert‐form {
+    flex: 1 1 300px;
+    padding: 20px;
+    box-sizing: border-box;
+    min-width: 280px;
+  }
+  .cert‐form h2 {
+    margin-bottom: 16px;
+    font-size: 1.5rem;
+    color: #333;
+  }
+  .cert‐form label {
+    display: block;
+    margin-top: 12px;
+    font-weight: bold;
+    color: #555;
+  }
+  .cert‐form input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+  .cert‐form button {
+    margin-top: 20px;
+    padding: 12px 20px;
+    background-color: #d22030;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  .cert‐form button:hover {
+    background-color: #000000;
+  }
+  .cert‐form p.status {
+    margin-top: 12px;
+    font-size: 0.95rem;
+    color: #444;
+  }
+
+  /* Right column: certificate preview & download */
+  .cert‐preview {
+    flex: 1 1 380px;
+    padding: 20px;
+    box-sizing: border-box;
+    text-align: center;
+    min-width: 300px;
+  }
+  .cert‐preview canvas,
+  .cert‐preview img {
+    max-width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+  .cert‐preview h2 {
+    margin-bottom: 16px;
+    font-size: 1.5rem;
+    color: #333;
+  }
+  .cert‐preview button.download {
+    margin-top: 16px;
+    padding: 10px 18px;
+    background-color: #28A745;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  .cert‐preview button.download:hover {
+    background-color: #1E7E34;
+  }
+
+  /* Mobile adjustments: stack columns */
+  @media (max-width: 700px) {
+    .cert‐container { flex-direction: column; padding: 0 10px; }
+    .cert‐form, .cert‐preview { min-width: 100%; }
+  }
+</style>
+
+<div class="cert‐container">
+  <!-- ========== Left: Form Inputs ========== -->
+  <div class="cert‐form">
+    <h2>Generate Your Certificate</h2>
+    <!-- Student Full Name -->
+    <label for="inputName">Full Name</label>
+    <input type="text" id="inputName" placeholder="e.g., Jane Doe" />
+
+    <!-- Date Field -->
+    <label for="inputDate">Date</label>
+    <input type="text" id="inputDate" placeholder="e.g., June 15, 2025" />
+
+    <button id="btnGenerate">Generate Certificate</button>
+    <p class="status" id="statusMessage"></p>
+  </div>
+
+  <!-- ========== Right: Certificate Preview & Download ========== -->
+  <div class="cert‐preview">
+    <h2>Preview</h2>
+    <!-- Hidden canvas used to draw the certificate -->
+    <canvas id="certCanvas" style="display: none;"></canvas>
+    <!-- Display generated certificate as an <img> -->
+    <img id="certImage" alt="Certificate Preview" />
+    <br/>
+    <!-- Download button only appears after generation -->
+    <button class="download" id="btnDownload" style="display: none;">
+      Download PDF
+    </button>
+  </div>
+</div>
+
+<script>
+  (function() {
+    // ======== CONFIG ========
+    // 1. URL of the certificate background (hosted on your WordPress site).
+    const CERT_BG_URL = 'assets/certificate.png';
+
+    // 2. Coordinates & font settings for each field on the certificate.
+    //    Adjust x, y, and fontSize until the text aligns perfectly.
+    const FIELD_CONFIG = {
+      name: {
+        x: 2000,          // horizontal center for 3300px-wide image
+        y: 1400,          // vertical position for the name (tweak as needed)
+        fontSize: 180,     // adjust to fit design
+        fontFamily: "Times New Roman",
+        color: "#000000"
+      },
+      date: {
+        x: 1150,
+        y: 2150,          // vertical position for the date (tweak as needed)
+        fontSize: 48,
+        fontFamily: "Arial",
+        color: "#333333"
+      }
+    };
+    // ======== END CONFIG ========
+
+    // Grab DOM elements
+    const inputName   = document.getElementById("inputName");
+    const inputDate   = document.getElementById("inputDate");
+    const btnGenerate = document.getElementById("btnGenerate");
+    const statusMsg   = document.getElementById("statusMessage");
+    const certCanvas  = document.getElementById("certCanvas");
+    const certImage   = document.getElementById("certImage");
+    const btnDownload = document.getElementById("btnDownload");
+
+    // Preload the background image so we don’t wait on each click
+    const bgImg = new Image();
+    bgImg.crossOrigin = "anonymous";
+    bgImg.src = CERT_BG_URL;
+
+    bgImg.onload = function() {
+      // Set canvas dimensions to match the background
+      certCanvas.width  = bgImg.width;
+      certCanvas.height = bgImg.height;
+    };
+
+    btnGenerate.addEventListener("click", function() {
+      const nameVal = inputName.value.trim();
+      const dateVal = inputDate.value.trim();
+
+      if (!nameVal) {
+        statusMsg.textContent = "Please enter your full name.";
+        return;
+      }
+      if (!dateVal) {
+        statusMsg.textContent = "Please enter the date.";
+        return;
+      }
+      statusMsg.textContent = "Generating certificate…";
+      btnGenerate.disabled = true;
+
+      // Ensure background is loaded
+      if (!bgImg.complete) {
+        bgImg.onload = generateCertificate;
+      } else {
+        generateCertificate();
+      }
+
+      function generateCertificate() {
+        // Draw onto the hidden canvas
+        const ctx = certCanvas.getContext("2d");
+        ctx.clearRect(0, 0, certCanvas.width, certCanvas.height);
+        ctx.drawImage(bgImg, 0, 0, certCanvas.width, certCanvas.height);
+
+        // Overlay Name
+        ctx.fillStyle = FIELD_CONFIG.name.color;
+        ctx.textAlign = "center";
+        ctx.font = `bold ${FIELD_CONFIG.name.fontSize}px ${FIELD_CONFIG.name.fontFamily}`;
+        ctx.fillText(nameVal, FIELD_CONFIG.name.x, FIELD_CONFIG.name.y);
+
+        // Overlay Date
+        ctx.fillStyle = FIELD_CONFIG.date.color;
+        ctx.font = `${FIELD_CONFIG.date.fontSize}px ${FIELD_CONFIG.date.fontFamily}`;
+        ctx.fillText(dateVal, FIELD_CONFIG.date.x, FIELD_CONFIG.date.y);
+
+        // Convert canvas to Data URL and show in the <img> for preview
+        const dataURL = certCanvas.toDataURL("image/png");
+        certImage.src = dataURL;
+        certImage.style.display = "block";
+
+        // Prepare the download button
+        btnDownload.style.display = "inline-block";
+        btnDownload.onclick = function() {
+          const { jsPDF } = window.jspdf;
+          const pdf = new jsPDF({
+            orientation: "landscape",
+            unit: "px",
+            format: [certCanvas.width, certCanvas.height]
+          });
+          pdf.addImage(dataURL, "PNG", 0, 0, certCanvas.width, certCanvas.height);
+          pdf.save(`${nameVal}_Certificate.pdf`);
+        };
+
+        statusMsg.textContent = "Certificate ready! Click Download.";
+        btnGenerate.disabled = false;
+      }
+    });
+  })();
+</script>
+
+<!-- jsPDF library (for PDF conversion) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
